@@ -6,7 +6,7 @@ from data_loader.loader import UserDataset
 import pickle
 from models.model import SDT_Generator
 import tqdm
-from utils.util import writeCache, dxdynp_to_list, coords_render
+from utils.util import writeCache, dxdynp_to_list, coords_render, coords_render_dxf
 import lmdb
 
 def main(opt):
@@ -57,13 +57,18 @@ def main(opt):
 
             for i, pred in enumerate(preds):
                 """Render the character images by connecting the coordinates"""
-                sk_pil = coords_render(preds[i], split=True, width=256, height=256, thickness=8, board=1)
-                
-                save_path = os.path.join(opt.save_dir, char[i] +'.png')
-                try:
-                    sk_pil.save(save_path)
-                except:
-                    print('error. %s, %s' % (save_path, char[i]))
+                # sk_pil = coords_render(preds[i], split=True, width=256, height=256, thickness=8, board=1)
+                doc = coords_render_dxf(preds[i], split=True, width=256, height=256, thickness=2, dxf_path='./Generated/Chinese_User/' + char[i] +".dxf")
+                # save_path = os.path.join(opt.save_dir, char[i] +'.png')
+                # lis = preds[i].tolist()
+                # print(lis)
+                # print(char[i])
+                # save_path_dxf = os.path.join(opt.save_dir, char[i] +'.dxf')
+                # try:
+                #     sk_pil.save(save_path)
+                #     sk_dxf.saveas(save_path_dxf)
+                # except:
+                #     print('error. %s, %s' % (save_path, char[i]))
 
 
 if __name__ == '__main__':
