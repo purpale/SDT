@@ -42,6 +42,184 @@ def normalize_xys(xys):
     xys[:, 0], xys[:, 1] = (xys[:, 0] - mux) / sigma, (xys[:, 1] - muy) / sigma
     return xys
 
+import ezdxf
+
+def coords_render_dxf(coordinates, split, width, height, thickness, board=5, dxf_path="output.dxf"):
+    """
+    生成DXF文件的函数
+    
+    参数:
+        coordinates: 坐标数组
+        split: 是否分割笔画
+        width: 画布宽度
+        height: 画布高度
+        thickness: 线条粗细（DXF中不使用，保持参数一致性）
+        board: 边距
+        dxf_path: DXF文件保存路径
+    
+    返回:
+        dxf文档对象
+    """
+    canvas_w = width  
+    canvas_h = height  
+    board_w = board  
+    board_h = board
+    # preprocess canvas size
+    p_canvas_w = canvas_w - 2*board_w
+    p_canvas_h = canvas_h - 2*board_h
+
+    # find original character size to fit with canvas
+    min_x = 635535
+    min_y = 635535
+    max_x = -1
+    max_y = -1
+    
+    # 复制坐标数组避免修改原数据
+    print(coordinates,end='+++++++++')
+    print(coordinates.tolist(),end='------------')
+
+    coordinates[:, 0] = np.cumsum(coordinates[:, 0])
+    coordinates[:, 1] = np.cumsum(coordinates[:, 1])
+    
+    if split:
+        ids = np.where(coordinates[:, -1] == 1)[0] 
+        if len(ids) < 1:  ### if not exist [0, 0, 1]
+            ids = np.where(coordinates[:, 3] == 1)[0] + 1
+            if len(ids) < 1: ### if not exist [0, 1, 0]
+                ids = np.array([len(coordinates)])
+                xys_split = np.split(coordinates, ids, axis=0)[:-1]
+            else:
+                xys_split = np.split(coordinates, ids, axis=0)
+        else:  ### if exist [0, 0, 1]
+            remove_end = np.split(coordinates, ids, axis=0)[0]
+            ids = np.where(remove_end[:, 3] == 1)[0] + 1
+            xys_split = np.split(remove_end, ids, axis=0)
+    else:
+        xys_split = [coordinates]
+    
+    # 计算边界
+    for stroke in xys_split:
+        for (x, y) in stroke[:, :2].reshape((-1, 2)):
+            min_x = min(x, min_x)
+            max_x = max(x, max_x)
+            min_y = min(y, min_y)
+            max_y = max(y, max_y)
+    
+    original_size = max(max_x - min_x, max_y - min_y)
+    if original_size == 0:
+        original_size = 1  # 避免除零错误
+    
+    # 创建DXF文档
+    doc = ezdxf.new('R2010')
+    msp = doc.modelspace()
+    
+    # 绘制每个笔画
+    for stroke in xys_split:
+        if len(stroke) < 2:
+            continue
+            
+        xs, ys = stroke[:, 0], stroke[:, 1]
+        
+        # 坐标转换
+        transformed_xs = (xs - min_x) / original_size * p_canvas_w + board_w
+        # DXF坐标系Y轴向上，需要翻转Y坐标
+        transformed_ys = canvas_h - ((ys - min_y) / original_size * p_canvas_h + board_h)
+        
+        # 构建点列表
+        points = list(zip(transformed_xs, transformed_ys))
+        
+        # 使用LWPOLYLINE绘制单一线条（不加粗）
+        if len(points) >= 2:
+            msp.add_lwpolyline(points)
+    
+    # 保存DXF文件
+    doc.saveas(dxf_path)
+    
+    return doc
+
+def coords_render_dxf_lines(coordinates, split, width, height, thickness, board=5, dxf_path="output.dxf"):
+    """
+    使用LINE实体生成DXF文件（每段为独立线段）
+    
+    参数:
+        coordinates: 坐标数组
+        split: 是否分割笔画
+        width: 画布宽度
+        height: 画布高度
+        thickness: 线条粗细（DXF中不使用）
+        board: 边距
+        dxf_path: DXF文件保存路径
+    
+    返回:
+        dxf文档对象
+    """
+    canvas_w = width  
+    canvas_h = height  
+    board_w = board  
+    board_h = board
+    p_canvas_w = canvas_w - 2*board_w
+    p_canvas_h = canvas_h - 2*board_h
+
+    min_x = 635535
+    min_y = 635535
+    max_x = -1
+    max_y = -1
+    
+    coordinates = coordinates.copy()
+    coordinates[:, 0] = np.cumsum(coordinates[:, 0])
+    coordinates[:, 1] = np.cumsum(coordinates[:, 1])
+    
+    if split:
+        ids = np.where(coordinates[:, -1] == 1)[0] 
+        if len(ids) < 1:
+            ids = np.where(coordinates[:, 3] == 1)[0] + 1
+            if len(ids) < 1:
+                ids = np.array([len(coordinates)])
+                xys_split = np.split(coordinates, ids, axis=0)[:-1]
+            else:
+                xys_split = np.split(coordinates, ids, axis=0)
+        else:
+            remove_end = np.split(coordinates, ids, axis=0)[0]
+            ids = np.where(remove_end[:, 3] == 1)[0] + 1
+            xys_split = np.split(remove_end, ids, axis=0)
+    else:
+        xys_split = [coordinates]
+    
+    for stroke in xys_split:
+        for (x, y) in stroke[:, :2].reshape((-1, 2)):
+            min_x = min(x, min_x)
+            max_x = max(x, max_x)
+            min_y = min(y, min_y)
+            max_y = max(y, max_y)
+    
+    original_size = max(max_x - min_x, max_y - min_y)
+    if original_size == 0:
+        original_size = 1
+    
+    doc = ezdxf.new('R2010')
+    msp = doc.modelspace()
+    
+    for stroke in xys_split:
+        if len(stroke) < 2:
+            continue
+            
+        xs, ys = stroke[:, 0], stroke[:, 1]
+        
+        transformed_xs = (xs - min_x) / original_size * p_canvas_w + board_w
+        transformed_ys = canvas_h - ((ys - min_y) / original_size * p_canvas_h + board_h)
+        
+        # 使用LINE实体连接相邻点
+        for i in range(len(transformed_xs) - 1):
+            start = (transformed_xs[i], transformed_ys[i])
+            end = (transformed_xs[i + 1], transformed_ys[i + 1])
+            msp.add_line(start, end)
+    
+    doc.saveas(dxf_path)
+    
+    return doc
+
+
+
 '''
 description: Rendering offline character images by connecting coordinate points
 '''
